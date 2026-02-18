@@ -42,13 +42,13 @@ dependencies:
   crypto: ^3.0.7
   google_maps_flutter: ^2.14.2
   flutter_polyline_points: ^3.1.0
-  geocoding: ^3.0.0
+  geocoding: ^4.0.0
   dio: ^5.9.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^3.0.0 # Tanggalin yung ^6.0.0 sa baba nito
   build_runner: ^2.4.8
   hive_generator: ^2.0.1
   flutter_launcher_icons: "^0.14.4"

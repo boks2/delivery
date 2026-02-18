@@ -1,0 +1,30 @@
+# Itakda ang platform sa 14.0 dahil ito ang requirement ng Google Maps
+platform :ios, '14.0'
+
+# Do not change this line
+install! 'cocoapods', :deterministic_uuids => false
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    # Siguraduhin na lahat ng plugins ay gagamit ng iOS 14.0 deployment target
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+
+      # Optional: Solusyon para sa Xcode 15+ issues (kung sakali lang)
+      config.build_settings['ENABLE_BITCODE'] = 'NO'
+    end
+  end
+end

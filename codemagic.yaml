@@ -1,32 +1,33 @@
 workflows:
   ios-free-build:
     name: iOS Free Accounts Build
-    instance_type: mac_mini_m2
     max_build_duration: 120
+    instance_type: mac_mini_m2
     environment:
       flutter: stable
       xcode: latest
     scripts:
-      - name: Setup and Get Dependencies
+      - name: Setup Dependencies
         script: |
           flutter pub get
           flutter precache --ios
-      - name: Fix CocoaPods Symlinks
+      - name: Fix and Install Pods
         script: |
           cd ios
-          # Burahin ang anumang Windows-generated symlinks
-          rm -rf .symlinks
+          # Burahin ang maling workspace file kung nakalusot sa git
+          rm -rf Runner.xcodeproj/project.xcworkspace
           rm -rf Pods
           rm -rf Podfile.lock
-          # Force pod installation
+          rm -rf .symlinks
+          # Force pod install
           pod install --repo-update
           cd ..
       - name: Build Unsigned IPA
         script: |
-          # Build the iOS app without signing
+          # Build process
           flutter build ios --release --no-codesign
-          
-          # Create IPA structure
+
+          # Packaging Step
           cd build/ios/iphoneos
           mkdir -p Payload
           cp -r Runner.app Payload/

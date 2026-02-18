@@ -1,9 +1,7 @@
-# Siguraduhin na 14.0 para sa Google Maps
 platform :ios, '14.0'
 
-# Gamitin ang relative path na standard sa lahat ng Flutter projects
-flutter_install_all_ios_pods_helper = File.expand_path(File.join('..', 'Flutter', 'podhelper.rb'), __FILE__)
-load flutter_install_all_ios_pods_helper
+# Ito ang standard path sa Mac para mahanap ang Flutter helper scripts
+load File.expand_path(File.join('..', 'Flutter', 'podhelper.rb'), __dir__)
 
 target 'Runner' do
   use_frameworks!

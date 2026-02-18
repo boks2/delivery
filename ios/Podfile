@@ -1,13 +1,16 @@
-# Itakda ang platform sa 14.0 dahil ito ang requirement ng Google Maps
+# 1. IMPORTANT: Idagdag itong dalawang lines sa itaas
+source 'https://github.com/CocoaPods/Specs.git'
 platform :ios, '14.0'
 
-# Do not change this line
-install! 'cocoapods', :deterministic_uuids => false
+# 2. IMPORTANT: Load the Flutter helper script
+flutter_install_all_ios_pods_helper = File.expand_path(File.join('..', '..', 'flutter', 'bin', 'cache', 'artifacts', 'engine', 'ios', 'Frameworks', 'Flutter.podspec'), __FILE__)
+load File.join(File.dirname(flutter_install_all_ios_pods_helper), 'podhelper.rb')
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
+  # Ito yung command na nag-error kanina, gagana na ito ngayon dahil sa 'load' line sa taas
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 
   target 'RunnerTests' do
@@ -19,11 +22,9 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
 
-    # Siguraduhin na lahat ng plugins ay gagamit ng iOS 14.0 deployment target
     target.build_configurations.each do |config|
+      # Siguraduhin na iOS 14.0 ang lahat para sa Google Maps
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
-
-      # Optional: Solusyon para sa Xcode 15+ issues (kung sakali lang)
       config.build_settings['ENABLE_BITCODE'] = 'NO'
     end
   end

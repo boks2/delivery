@@ -1,7 +1,16 @@
 platform :ios, '14.0'
 
-# Ito ang standard path sa Mac para mahanap ang Flutter helper scripts
-load File.expand_path(File.join('..', 'Flutter', 'podhelper.rb'), __dir__)
+# HANAPIN ANG FLUTTER SDK PATH
+# Sa Codemagic machine, ang Flutter ay nasa default path na ito:
+flutter_root = ENV['FLUTTER_ROOT'] || File.expand_path('~/programs/flutter')
+podhelper_path = File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper.rb')
+
+if File.exist?(podhelper_path)
+  load podhelper_path
+else
+  # Fallback path kung iba ang setup ng machine
+  load File.expand_path(File.join('..', '..', 'flutter', 'bin', 'cache', 'artifacts', 'engine', 'ios', 'Frameworks', 'podhelper.rb'), __FILE__)
+end
 
 target 'Runner' do
   use_frameworks!

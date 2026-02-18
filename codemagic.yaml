@@ -9,12 +9,15 @@ workflows:
     scripts:
       - name: Get Flutter dependencies
         script: flutter packages pub get
-      - name: Build unsigned iOS IPA
+      - name: Install Pods and Build
         script: |
-          # Ito ang magic command para ma-link ang plugins kahit walang podhelper
-          flutter build ios --release --no-codesign --pub-get
+          # 1. I-generate ang kailangang iOS files
+          flutter precache --ios
           
-          # Packaging logic
+          # 2. Build ios nang walang codesign
+          flutter build ios --release --no-codesign
+          
+          # 3. Packaging logic
           cd build/ios/iphoneos
           mkdir -p Payload
           cp -r Runner.app Payload/

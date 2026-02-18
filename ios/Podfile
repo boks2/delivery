@@ -4,10 +4,9 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # Manual declaration para sa Google Maps at iba pang plugins
+  # Manual declaration ng plugins para hindi mawala ang module dependency
   pod 'google_maps_flutter_ios', :path => '.symlinks/plugins/google_maps_flutter_ios/ios'
   pod 'geocoding_ios', :path => '.symlinks/plugins/geocoding_ios/ios'
-  pod 'local_auth_darwin', :path => '.symlinks/plugins/local_auth_darwin/darwin'
 end
 
 post_install do |installer|

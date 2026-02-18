@@ -437,11 +437,7 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
         middle: Text("Food Delivery", style: TextStyle(color: isDark ? kPandaWhite : kPandaDark)),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.pentagon, size: 18, color: Colors.amber),
-            const SizedBox(width: 5),
-            Text("$currentBalance", style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
+
         ),
       ),
       child: ListView(

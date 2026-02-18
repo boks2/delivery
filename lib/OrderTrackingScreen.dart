@@ -69,7 +69,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
   void _startRiderSimulation() {
     int currentStep = 0;
-    Timer.periodic(const Duration(milliseconds: 200), (timer) {
+
+    Timer.periodic(const Duration(milliseconds: 800), (timer) {
       if (currentStep < polylineCoordinates.length) {
         if (mounted) {
           setState(() {
@@ -77,6 +78,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               markerId: const MarkerId("rider"),
               position: polylineCoordinates[currentStep],
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+              infoWindow: const InfoWindow(title: "Rider is delivering..."),
             );
           });
 
@@ -86,10 +88,24 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         }
         currentStep++;
       } else {
+        // DITO ANG PAGBABAGO:
         if (mounted) {
           setState(() => deliveryStatus = "Rider has Arrived!");
+
+          timer.cancel(); // Stop ang timer
+
+          // Mag-antay tayo ng 2 seconds para mabasa muna ng user na "Arrived" na
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              // Babalik tayo sa main screen (RobuxStoreMain)
+              Navigator.of(context).popUntil((route) => route.isFirst);
+
+              // O kung gusto mo diretso sa list tab, pwede nating i-trigger
+              // ang navigation depende sa kung paano mo gusto ang flow.
+              debugPrint("Simulation Finished. Returning to Home/History.");
+            }
+          });
         }
-        timer.cancel();
       }
     });
   }

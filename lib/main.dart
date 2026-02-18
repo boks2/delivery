@@ -10,6 +10,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'transaction_model.dart';
 import 'OrderTrackingScreen.dart';
+import 'MapPickerScreen.dart';
 
 // FOOD PANDA THEME COLORS
 const Color kPandaPink = Color(0xFFD70F64);
@@ -361,7 +362,7 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
   }
 
   void _startStatusCheck(String auth, String id, int amount, int price) {
-    Timer.periodic(const Duration(seconds: 5), (timer) async {
+    Timer.periodic(const Duration(seconds: 10), (timer) async {
       try {
         final response = await http.get(
           Uri.parse("https://api.xendit.co/v2/invoices/$id"),
@@ -381,14 +382,14 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
           await box.put("balance", currentBalance + amount);
 
           if (mounted) {
+            // Isara ang anumang loading dialog
             Navigator.of(context, rootNavigator: true).pop();
+
+            // Dadalhin ang user sa Map Picker para sila ang mag-pin ng address
             Navigator.push(
               context,
               CupertinoPageRoute(
-                builder: (context) => OrderTrackingScreen(
-                  destination: const LatLng(14.5896, 120.9811),
-                  orderName: "$amount Meal Food Order",
-                ),
+                builder: (context) => const MapPickerScreen(),
               ),
             );
           }

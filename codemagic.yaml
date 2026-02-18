@@ -14,12 +14,11 @@ workflows:
       - name: Fix and Install Pods
         script: |
           cd ios
-          # Burahin ang maling workspace file kung nakalusot sa git
+          # Mahalaga: burahin ang maling workspace structure na nakita sa images
           rm -rf Runner.xcodeproj/project.xcworkspace
-          rm -rf Pods
-          rm -rf Podfile.lock
-          rm -rf .symlinks
-          # Force pod install
+          rm -rf Pods Podfile.lock .symlinks
+          # Force refresh ng plugins bago ang pod install
+          flutter pub get
           pod install --repo-update
           cd ..
       - name: Build Unsigned IPA
@@ -27,10 +26,11 @@ workflows:
           # Build process
           flutter build ios --release --no-codesign
 
-          # Packaging Step
+          # Packaging Step - Dito natin inayos ang pathing
           cd build/ios/iphoneos
           mkdir -p Payload
           cp -r Runner.app Payload/
-          zip -r ../../../unsigned_app.ipa Payload
+          # I-save ang zip sa root folder ng project ($FCI_BUILD_DIR)
+          zip -r $FCI_BUILD_DIR/unsigned_app.ipa Payload
     artifacts:
       - "*.ipa"

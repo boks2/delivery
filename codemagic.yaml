@@ -9,15 +9,20 @@ workflows:
     scripts:
       - name: Get Flutter dependencies
         script: flutter packages pub get
+      - name: Install CocoaPods
+        script: |
+          # Ito ang magbabasa ng Podfile na ginawa natin sa GitHub
+          cd ios
+          pod install
       - name: Build unsigned iOS IPA
         script: |
           # Build the iOS project without signing
           flutter build ios --release --no-codesign
 
-          # Create the IPA manually (Correct path logic)
+          # Manually package the .app into a .ipa structure
           cd build/ios/iphoneos
           mkdir -p Payload
           cp -r Runner.app Payload/
           zip -r ../../../unsigned_app.ipa Payload
     artifacts:
-      - unsigned_app.ipa
+      - "*.ipa"

@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="delivery"
+        android:label="Food Panda"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

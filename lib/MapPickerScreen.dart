@@ -1,9 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'OrderTrackingScreen.dart'; // Siguraduhing tama ang filename ng tracking screen mo
 
 class MapPickerScreen extends StatefulWidget {
-  const MapPickerScreen({super.key});
+  // 1. Idagdag ang callback function na ito
+  final Function(LatLng) onLocationSelected;
+
+  const MapPickerScreen({super.key, required this.onLocationSelected});
 
   @override
   State<MapPickerScreen> createState() => _MapPickerScreenState();
@@ -53,30 +55,19 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             right: 20,
             child: Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  color: CupertinoColors.white.withOpacity(0.8),
-                  child: const Text(
-                    "Tap on the map to set your pin",
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                ),
                 const SizedBox(height: 15),
-                CupertinoButton.filled(
-                  onPressed: _selectedLocation == null
-                      ? null
-                      : () {
-                    Navigator.push(
-                      context,
-                      CupertinoPageRoute(
-                        builder: (context) => OrderTrackingScreen(
-                          destination: _selectedLocation!,
-                          orderName: "Track your Rider",
-                        ),
-                      ),
-                    );
-                  },
-                  child: const Text("Confirm Destination"),
+                SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton.filled(
+                    onPressed: _selectedLocation == null
+                        ? null
+                        : () {
+                      // 2. TATAWAGIN ANG CALLBACK AT MAGPO-POP
+                      widget.onLocationSelected(_selectedLocation!);
+                      Navigator.pop(context);
+                    },
+                    child: const Text("Confirm Destination"),
+                  ),
                 ),
               ],
             ),

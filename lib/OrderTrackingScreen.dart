@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui; // Import para sa resizing
+import 'package:flutter/services.dart'; // Import para sa rootBundle
 import 'package:flutter/cupertino.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -19,12 +21,19 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   List<LatLng> polylineCoordinates = [];
   Marker? riderMarker;
   String deliveryStatus = "Order Confirmed";
+  BitmapDescriptor? riderIcon;
+
+  Timer? _initialTimer;
+  Timer? _simulationTimer;
 
   @override
   void initState() {
     super.initState();
-    // 3 seconds delay bago lumabas ang ruta at rider
-    Timer(const Duration(seconds: 60), () {
+    _setCustomMarkerIcon();
+
+    deliveryStatus = "Order Confirmed";
+
+    _initialTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() => deliveryStatus = "Rider is picking up your order...");
         _getOSRMRoute();
@@ -32,12 +41,49 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     });
   }
 
-  // ITO ANG ATING LIBRENG ROUTING ENGINE
+  @override
+  void dispose() {
+    _initialTimer?.cancel();
+    _simulationTimer?.cancel();
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  // --- BAGONG HELPER FUNCTION PARA SA PAG-ADJUST NG SIZE ---
+  Future<Uint8List> getBytesFromAsset(String path, int width) async {
+    // Naglo-load ng image file mula sa assets
+    ByteData data = await rootBundle.load(path);
+
+    // Nire-resize ang image gamit ang targetWidth
+    ui.Codec codec = await ui.instantiateImageCodec(
+        data.buffer.asUint8List(),
+        targetWidth: width
+    );
+
+    ui.FrameInfo fi = await codec.getNextFrame();
+
+    // ITO ANG FIX: buffer.asUint8List() ang tamang syntax
+    return (await fi.image.toByteData(format: ui.ImageByteFormat.png))!
+        .buffer
+        .asUint8List();
+  }
+  void _setCustomMarkerIcon() async {
+    try {
+      // Palitan ang '120' sa size na gusto mo (e.g., 100, 150, 200)
+      final Uint8List markerIcon = await getBytesFromAsset('assets/icon.png', 120);
+
+      setState(() {
+        riderIcon = BitmapDescriptor.fromBytes(markerIcon);
+      });
+    } catch (e) {
+      debugPrint("Error resizing icon: $e");
+    }
+  }
+
   Future<void> _getOSRMRoute() async {
-    // Kunwari ang rider ay nagsimula sa layong ~1km (Para may dadaanan siyang highway)
     LatLng startLocation = LatLng(
-        widget.destination.latitude + 0.008,
-        widget.destination.longitude + 0.008
+        widget.destination.latitude + 0.005,
+        widget.destination.longitude + 0.005
     );
 
     final url = 'https://router.project-osrm.org/route/v1/driving/'
@@ -52,15 +98,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         final data = jsonDecode(response.body);
         final List coords = data['routes'][0]['geometry']['coordinates'];
 
-        setState(() {
-          deliveryStatus = "Delivery is on the way";
-          // Baligtarin ang [Long, Lat] papuntang [Lat, Long]
-          polylineCoordinates = coords
-              .map((c) => LatLng(c[1].toDouble(), c[0].toDouble()))
-              .toList();
-        });
-
-        _startRiderSimulation();
+        if (mounted) {
+          setState(() {
+            deliveryStatus = "Rider is on the way...";
+            polylineCoordinates = coords
+                .map((c) => LatLng(c[1].toDouble(), c[0].toDouble()))
+                .toList();
+          });
+          _startRiderSimulation();
+        }
       }
     } catch (e) {
       debugPrint("OSRM Error: $e");
@@ -69,15 +115,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
   void _startRiderSimulation() {
     int currentStep = 0;
+    _simulationTimer?.cancel();
 
-    Timer.periodic(const Duration(milliseconds: 800), (timer) {
+    _simulationTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) {
       if (currentStep < polylineCoordinates.length) {
         if (mounted) {
           setState(() {
             riderMarker = Marker(
               markerId: const MarkerId("rider"),
               position: polylineCoordinates[currentStep],
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+              icon: riderIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+              anchor: const Offset(0.5, 0.5),
               infoWindow: const InfoWindow(title: "Rider is delivering..."),
             );
           });
@@ -88,21 +136,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         }
         currentStep++;
       } else {
-        // DITO ANG PAGBABAGO:
         if (mounted) {
           setState(() => deliveryStatus = "Rider has Arrived!");
+          timer.cancel();
 
-          timer.cancel(); // Stop ang timer
-
-          // Mag-antay tayo ng 2 seconds para mabasa muna ng user na "Arrived" na
-          Future.delayed(const Duration(seconds: 2), () {
+          Future.delayed(const Duration(seconds: 4), () {
             if (mounted) {
-              // Babalik tayo sa main screen (RobuxStoreMain)
               Navigator.of(context).popUntil((route) => route.isFirst);
-
-              // O kung gusto mo diretso sa list tab, pwede nating i-trigger
-              // ang navigation depende sa kung paano mo gusto ang flow.
-              debugPrint("Simulation Finished. Returning to Home/History.");
             }
           });
         }
@@ -113,34 +153,44 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(middle: Text(widget.orderName)),
+      navigationBar: CupertinoNavigationBar(
+        middle: Text(widget.orderName),
+        automaticallyImplyLeading: false,
+      ),
       child: SafeArea(
         child: Column(
           children: [
-            // Status Header
             Container(
               padding: const EdgeInsets.all(16),
               width: double.infinity,
-              color: CupertinoColors.activeBlue.withOpacity(0.1),
-              child: Text(deliveryStatus, textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: CupertinoColors.activeBlue)),
+              decoration: BoxDecoration(
+                  color: CupertinoColors.systemPink.withOpacity(0.1),
+                  border: const Border(bottom: BorderSide(color: CupertinoColors.systemPink, width: 0.5))
+              ),
+              child: Text(
+                deliveryStatus,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFD70F64)),
+              ),
             ),
-            // The Map
             Expanded(
               child: GoogleMap(
                 initialCameraPosition: CameraPosition(target: widget.destination, zoom: 15),
                 onMapCreated: (ctrl) => _controller = ctrl,
-                myLocationEnabled: false, // Iwas crash sa emulator
                 polylines: {
                   Polyline(
                     polylineId: const PolylineId("route"),
                     points: polylineCoordinates,
-                    color: CupertinoColors.activeBlue,
-                    width: 5,
+                    color: const Color(0xFFD70F64),
+                    width: 6,
                   ),
                 },
                 markers: {
-                  Marker(markerId: const MarkerId("user"), position: widget.destination),
+                  Marker(
+                      markerId: const MarkerId("user"),
+                      position: widget.destination,
+                      infoWindow: const InfoWindow(title: "Delivery Point")
+                  ),
                   if (riderMarker != null) riderMarker!,
                 },
               ),

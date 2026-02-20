@@ -21,7 +21,9 @@ const Color kPandaDark = Color(0xFF333333);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  Hive.registerAdapter(TransactionHistoryAdapter());
+  if (!Hive.isAdapterRegistered(0)) {
+    Hive.registerAdapter(TransactionHistoryAdapter());
+  }
   await Hive.openBox("database");
   await Hive.openBox("todoBox");
   await Hive.openBox<TransactionHistory>("historyBox");
@@ -39,7 +41,7 @@ class MyApp extends StatelessWidget {
     return ValueListenableBuilder(
       valueListenable: box.listenable(),
       builder: (context, Box box, widget) {
-        bool isDark = box.get("isDark") ?? false; // Default to Light for FoodPanda look
+        bool isDark = box.get("isDark") ?? false;
 
         return CupertinoApp(
           theme: CupertinoThemeData(
@@ -117,7 +119,6 @@ class _HomepageState extends State<Homepage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // FOODPANDA STYLE ICON
               const Icon(CupertinoIcons.bag_fill, size: 80, color: kPandaPink),
               const SizedBox(height: 10),
               const Text("foodpanda",
@@ -197,6 +198,7 @@ class _HomepageState extends State<Homepage> {
                         CupertinoDialogAction(
                           isDestructiveAction: true,
                           onPressed: () async {
+                            // Buburahin lahat pati ang order status
                             await box.clear();
                             await Hive.box("todoBox").clear();
                             await Hive.box<TransactionHistory>("historyBox").clear();
@@ -304,6 +306,7 @@ class _SignupState extends State<Signup> {
                       box.put("biometrics", false);
                       box.put("isDark", false);
                       box.put("balance", 0);
+                      box.put("hasActiveOrder", false); // Default status
                       Navigator.pushReplacement(context, CupertinoPageRoute(builder: (context) => const Homepage()));
                     }
                   },
@@ -328,20 +331,39 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
   final todoBox = Hive.box("todoBox");
   final String secretKey = "xnd_development_eK78SFIvggTwLxrFpMVLLP0oh9U4fls1lt6Iszi3QFvXKhcdxqzIpuXw3007WxT";
 
+  LatLng? selectedDestination;
+  final CupertinoTabController _tabController = CupertinoTabController();
+  Timer? _statusTimer;
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> payNow(BuildContext context, int price, int amount) async {
     showCupertinoDialog(
         context: context,
-        builder: (context) => const CupertinoAlertDialog(
+        builder: (context) =>
+        const CupertinoAlertDialog(
           title: Text("Preparing Order..."),
-          content: Padding(padding: EdgeInsets.only(top: 10), child: CupertinoActivityIndicator()),
+          content: Padding(padding: EdgeInsets.only(top: 10),
+              child: CupertinoActivityIndicator()),
         ));
 
     try {
       String authHeader = 'Basic ${base64Encode(utf8.encode("$secretKey:"))}';
-      final response = await http.post(Uri.parse("https://api.xendit.co/v2/invoices/"),
-          headers: {"Authorization": authHeader, "Content-Type": "application/json"},
+      final response = await http.post(
+          Uri.parse("https://api.xendit.co/v2/invoices/"),
+          headers: {
+            "Authorization": authHeader,
+            "Content-Type": "application/json"
+          },
           body: jsonEncode({
-            "external_id": "inv_${DateTime.now().millisecondsSinceEpoch}",
+            "external_id": "inv_${DateTime
+                .now()
+                .millisecondsSinceEpoch}",
             "amount": price,
             "currency": "PHP"
           }));
@@ -352,7 +374,9 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
 
       if (!mounted) return;
       Navigator.pop(context);
-      Navigator.push(context, CupertinoPageRoute(builder: (context) => PaymentPage(url: invoiceUrl)));
+
+      Navigator.push(context, CupertinoPageRoute(
+          builder: (context) => PaymentPage(url: invoiceUrl)));
 
       _startStatusCheck(authHeader, id, amount, price);
     } catch (e) {
@@ -362,7 +386,14 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
   }
 
   void _startStatusCheck(String auth, String id, int amount, int price) {
-    Timer.periodic(const Duration(seconds: 10), (timer) async {
+    _statusTimer?.cancel();
+
+    _statusTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
       try {
         final response = await http.get(
           Uri.parse("https://api.xendit.co/v2/invoices/$id"),
@@ -372,6 +403,17 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
 
         if (data["status"] == "PAID") {
           timer.cancel();
+
+          // 1. I-SAVE SA DATABASE NA MAY ACTIVE ORDER NA
+          await box.put("hasActiveOrder", true);
+
+          // 2. I-RESET ANG LOCATION PARA MAG-ASK ULIT NG BAGONG DESTINATION
+          if (mounted) {
+            setState(() {
+              selectedDestination = null; // <--- ETO ANG SOLUSYON
+            });
+          }
+
           final historyBox = Hive.box<TransactionHistory>("historyBox");
           await historyBox.add(TransactionHistory(
             itemName: "$amount Meal Package",
@@ -382,15 +424,22 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
           await box.put("balance", currentBalance + amount);
 
           if (mounted) {
-            // Isara ang anumang loading dialog
             Navigator.of(context, rootNavigator: true).pop();
 
-            // Dadalhin ang user sa Map Picker para sila ang mag-pin ng address
-            Navigator.push(
-              context,
-              CupertinoPageRoute(
-                builder: (context) => const MapPickerScreen(),
-              ),
+            showCupertinoDialog(
+              context: context,
+              builder: (context) =>
+                  CupertinoAlertDialog(
+                    title: const Text("Payment Successful!"),
+                    content: const Text(
+                        "Your order is now active. Please set your delivery location in the Tracking tab."),
+                    actions: [
+                      CupertinoDialogAction(
+                        child: const Text("OK"),
+                        onPressed: () => Navigator.pop(context),
+                      )
+                    ],
+                  ),
             );
           }
         }
@@ -402,28 +451,43 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
 
   @override
   Widget build(BuildContext context) {
+    // Kinig sa hasActiveOrder change para mag-update ang UI
     return ValueListenableBuilder(
-      valueListenable: box.listenable(keys: ["balance", "isDark", "biometrics"]),
+      valueListenable: box.listenable(
+          keys: ["balance", "isDark", "biometrics", "hasActiveOrder"]),
       builder: (context, Box box, _) {
         int currentBalance = box.get("balance") ?? 0;
         bool isDark = box.get("isDark") ?? false;
 
         return CupertinoTabScaffold(
+          controller: _tabController,
           tabBar: CupertinoTabBar(
               activeColor: kPandaPink,
               inactiveColor: CupertinoColors.systemGrey,
               items: const [
-                BottomNavigationBarItem(icon: Icon(CupertinoIcons.house_fill), label: "Delivery"),
-                BottomNavigationBarItem(icon: Icon(CupertinoIcons.doc_text_fill), label: "Orders"),
-                BottomNavigationBarItem(icon: Icon(CupertinoIcons.settings), label: "Profile")
+                BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.house_fill), label: "Delivery"),
+                BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.doc_text_fill), label: "Orders"),
+                BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.settings), label: "Profile"),
+                BottomNavigationBarItem(
+                    icon: Icon(CupertinoIcons.location_solid),
+                    label: "Tracking"),
               ]
           ),
           tabBuilder: (context, index) {
             switch (index) {
-              case 0: return _buildStoreTab(currentBalance, isDark);
-              case 1: return _buildListTab(isDark);
-              case 2: return _buildSettingsTab(isDark);
-              default: return _buildStoreTab(currentBalance, isDark);
+              case 0:
+                return _buildStoreTab(currentBalance, isDark);
+              case 1:
+                return _buildListTab(isDark);
+              case 2:
+                return _buildSettingsTab(isDark);
+              case 3:
+                return _buildTrackingTab(isDark);
+              default:
+                return _buildStoreTab(currentBalance, isDark);
             }
           },
         );
@@ -435,18 +499,17 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         automaticallyImplyLeading: false,
-        middle: Text("Food Delivery", style: TextStyle(color: isDark ? kPandaWhite : kPandaDark)),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-
-        ),
+        middle: Text("Food Delivery",
+            style: TextStyle(color: isDark ? kPandaWhite : kPandaDark)),
       ),
       child: ListView(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 30, 20, 15),
             child: Text("Popular Deals",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: isDark ? kPandaWhite : kPandaDark)
+                style: TextStyle(fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: isDark ? kPandaWhite : kPandaDark)
             ),
           ),
           _listPackage("80", 80, isDark),
@@ -467,7 +530,9 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1F1F1F) : kPandaWhite,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -475,18 +540,22 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("$amount Meal Combo",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? kPandaWhite : kPandaDark)
-              ),
-              const Text("Fast Delivery • ₱0 Fee", style: TextStyle(fontSize: 12, color: kPandaPink)),
+              Text("$amount Meal Combo", style: TextStyle(fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? kPandaWhite : kPandaDark)),
+              const Text("Fast Delivery • ₱0 Fee",
+                  style: TextStyle(fontSize: 12, color: kPandaPink)),
             ],
           ),
           CupertinoButton(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             color: kPandaPink,
             borderRadius: BorderRadius.circular(20),
-            child: Text("₱$price", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
-            onPressed: () => payNow(context, int.parse(price.replaceAll(',', '')), amount),
+            child: Text("₱$price", style: const TextStyle(fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.white)),
+            onPressed: () =>
+                payNow(context, int.parse(price.replaceAll(',', '')), amount),
           )
         ],
       ),
@@ -498,20 +567,23 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
           automaticallyImplyLeading: false,
-          middle: Text("Past Orders", style: TextStyle(color: isDark ? kPandaWhite : kPandaDark))
+          middle: Text("Past Orders",
+              style: TextStyle(color: isDark ? kPandaWhite : kPandaDark))
       ),
       child: SafeArea(
         child: ValueListenableBuilder(
           valueListenable: historyBox.listenable(),
           builder: (context, Box<TransactionHistory> box, _) {
-            if (box.isEmpty) return const Center(child: Text("No orders found"));
+            if (box.isEmpty)
+              return const Center(child: Text("No orders found"));
             return ListView.builder(
               padding: const EdgeInsets.only(top: 15, bottom: 100),
               itemCount: box.length,
               itemBuilder: (context, index) {
                 final transaction = box.getAt(box.length - 1 - index);
                 return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                  margin: const EdgeInsets.symmetric(
+                      horizontal: 20, vertical: 6),
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF1F1F1F) : kPandaWhite,
@@ -524,13 +596,17 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(transaction?.itemName ?? "Unknown Item",
-                              style: const TextStyle(fontWeight: FontWeight.bold)),
-                          Text("${transaction?.date.month}/${transaction?.date.day}/${transaction?.date.year}",
-                              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold)),
+                          Text("${transaction?.date.month}/${transaction?.date
+                              .day}/${transaction?.date.year}",
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.grey)),
                         ],
                       ),
                       Text("₱${transaction?.amount.toStringAsFixed(0)}",
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: kPandaPink)),
+                          style: const TextStyle(fontWeight: FontWeight.bold,
+                              color: kPandaPink)),
                     ],
                   ),
                 );
@@ -546,7 +622,8 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
           automaticallyImplyLeading: false,
-          middle: Text("Profile", style: TextStyle(color: isDark ? kPandaWhite : kPandaDark))
+          middle: Text("Profile",
+              style: TextStyle(color: isDark ? kPandaWhite : kPandaDark))
       ),
       child: ListView(
         children: [
@@ -555,8 +632,10 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
             children: [
               CupertinoListTile(
                 title: const Text("Dark Mode"),
-                leading: const Icon(CupertinoIcons.moon_fill, color: Colors.indigo),
-                trailing: CupertinoSwitch(value: isDark, onChanged: (v) => box.put("isDark", v)),
+                leading: const Icon(
+                    CupertinoIcons.moon_fill, color: Colors.indigo),
+                trailing: CupertinoSwitch(
+                    value: isDark, onChanged: (v) => box.put("isDark", v)),
               ),
               CupertinoListTile(
                 title: const Text("Biometric Authentication"),
@@ -567,27 +646,33 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
                 ),
               ),
               CupertinoListTile(
-                title: const Text("Logout", style: TextStyle(color: kPandaPink)),
-                leading: const Icon(CupertinoIcons.square_arrow_right, color: kPandaPink),
+                title: const Text(
+                    "Logout", style: TextStyle(color: kPandaPink)),
+                leading: const Icon(
+                    CupertinoIcons.square_arrow_right, color: kPandaPink),
                 onTap: () {
-                  // Ibinabalik natin ang Confirmation Dialog dito
                   showCupertinoDialog(
                     context: context,
                     builder: (context) => CupertinoAlertDialog(
                       title: const Text("Sign Out"),
                       content: const Text("Are you sure you want to sign out?"),
                       actions: [
-                        // CHOICE 1: CANCEL
-                        CupertinoDialogAction(
-                          child: const Text("Cancel"),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                        // CHOICE 2: YES
+                        CupertinoDialogAction(child: const Text("Cancel"), onPressed: () => Navigator.pop(context)),
                         CupertinoDialogAction(
                           isDestructiveAction: true,
                           child: const Text("Yes"),
-                          onPressed: () {
-                            Navigator.pop(context); // Isara ang dialog
+                          onPressed: () async { // Gawin nating async ito
+                            // 1. I-RESET ANG LOCAL VARIABLE SA MEMORY
+                            setState(() {
+                              selectedDestination = null;
+                            });
+
+                            // 2. I-RESET ANG STATUS SA HIVE DATABASE
+                            // Ginagawa nating false para hindi na lumabas yung "No delivery location set"
+                            await box.put("hasActiveOrder", false);
+
+                            if (!mounted) return;
+                            Navigator.pop(context);
                             Navigator.pushAndRemoveUntil(
                               context,
                               CupertinoPageRoute(builder: (context) => const Homepage()),
@@ -603,6 +688,123 @@ class _RobuxStoreMainState extends State<RobuxStoreMain> {
             ],
           )
         ],
+      ),
+    );
+  }
+
+  // --- PERSISTENT TRACKING TAB LOGIC ---
+  Widget _buildTrackingTab(bool isDark) {
+    bool hasActiveOrder = box.get("hasActiveOrder") ?? false;
+
+    return CupertinoPageScaffold(
+      // TANGGALIN ang navigationBar property para sumagad sa itaas ang content
+      child: SafeArea(
+        bottom: false,
+        child: Builder(
+          builder: (context) {
+            // 1. KUNG WALANG ORDER
+            if (!hasActiveOrder) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(CupertinoIcons.cart_badge_minus, size: 80,
+                        color: CupertinoColors.systemGrey4),
+                    SizedBox(height: 10),
+                    Text("No active orders yet",
+                        style: TextStyle(color: CupertinoColors.systemGrey)),
+                  ],
+                ),
+              );
+            }
+
+            // 2. KUNG PAID NA PERO WALA PANG LOCATION (Ito yung screen sa screenshot mo)
+            if (selectedDestination == null) {
+              return Column(
+                children: [
+                  // CUSTOM HEADER: Sobrang liit na padding para itaas ang title
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 0),
+                    child: Text(
+                      "Live Tracking",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? kPandaWhite : kPandaDark,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(CupertinoIcons.location_solid, size: 80,
+                              color: kPandaPink),
+                          const SizedBox(height: 20),
+                          const Text("No delivery location set",
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 40, vertical: 10),
+                            child: Text(
+                              "Please set your location to start tracking your food delivery.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: CupertinoColors.systemGrey),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // ETO YUNG BUTTON NA MAY TEXT NA
+                          CupertinoButton(
+                            color: kPandaPink,
+                            borderRadius: BorderRadius.circular(12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 40, vertical: 15),
+                            child: const Text(
+                              "Set Delivery Location",
+                              // <--- Nilagyan natin ng text
+                              style: TextStyle(color: Colors.white,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                CupertinoPageRoute(
+                                  builder: (context) =>
+                                      MapPickerScreen(
+                                        onLocationSelected: (LatLng loc) {
+                                          if (mounted) {
+                                            setState(() {
+                                              selectedDestination = loc;
+                                            });
+                                          }
+                                        },
+                                      ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            // 3. KUNG MAY LOCATION NA (MAP VIEW)
+            return OrderTrackingScreen(
+              key: ValueKey(
+                  "${selectedDestination!.latitude}_${selectedDestination!
+                      .longitude}"),
+              destination: selectedDestination!,
+              orderName: "Food Delivery",
+            );
+          },
+        ),
       ),
     );
   }
